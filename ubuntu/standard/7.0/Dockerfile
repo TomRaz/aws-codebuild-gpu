@@ -179,110 +179,6 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 #=======================End of stage: tools  =================
 FROM tools AS runtimes
 
-#****************     .NET-CORE     *******************************************************
-
-# Dotnet
-ENV PATH "/root/.dotnet/:/root/.dotnet/tools/:$PATH"
-RUN set -ex  \
-&& wget -qO /usr/local/bin/dotnet-install.sh https://dot.net/v1/dotnet-install.sh \
-&& chmod +x /usr/local/bin/dotnet-install.sh
-
-ENV DOTNET_6_SDK_VERSION="6.0.423"
-ENV DOTNET_8_SDK_VERSION="8.0.301"
-ENV DOTNET_6_GLOBAL_JSON_SDK_VERSION="6.0.0"
-ENV DOTNET_8_GLOBAL_JSON_SDK_VERSION="8.0.0"
-ENV DOTNET_ROOT="/root/.dotnet"
-
-# Add .NET Core 8 Global Tools install folder to PATH
-RUN  /usr/local/bin/dotnet-install.sh -v $DOTNET_8_SDK_VERSION \
-     && dotnet --list-sdks \
-     && rm -rf /tmp/*
-
-# Add .NET Core 6 Global Tools install folder to PATH
-RUN  /usr/local/bin/dotnet-install.sh -v $DOTNET_6_SDK_VERSION \
-     && dotnet --list-sdks \
-     && rm -rf /tmp/* \
-     && cd /codebuild && dotnet new globaljson --force --sdk-version $DOTNET_6_GLOBAL_JSON_SDK_VERSION --roll-forward feature
-
-# Trigger the population of the local package cache
-ENV NUGET_XMLDOC_MODE skip
-RUN set -ex \
-    && mkdir warmup \
-    && cd warmup \
-    && dotnet new \
-    && cd .. \
-    && rm -rf warmup \
-    && rm -rf /tmp/NuGetScratch
-
-# Install Powershell Core
-# See instructions at https://docs.microsoft.com/en-us/powershell/scripting/setup/installing-powershell-core-on-linux
-ARG POWERSHELL_VERSION=7.3.11
-ARG POWERSHELL_DOWNLOAD_URL=https://github.com/PowerShell/PowerShell/releases/download/v$POWERSHELL_VERSION/powershell-$POWERSHELL_VERSION-linux-x64.tar.gz
-ARG POWERSHELL_DOWNLOAD_SHA=674CABD4AC9EAD59C1BBBDCE3FBE07134215128AF1C429A41FE74DDE96928BD4
-
-RUN set -ex \
-    && curl -SL $POWERSHELL_DOWNLOAD_URL --output powershell.tar.gz \
-    && echo "$POWERSHELL_DOWNLOAD_SHA powershell.tar.gz" | sha256sum -c - \
-    && mkdir -p /opt/microsoft/powershell/$POWERSHELL_VERSION \
-    && tar zxf powershell.tar.gz -C /opt/microsoft/powershell/$POWERSHELL_VERSION \
-    && rm powershell.tar.gz \
-    && ln -s /opt/microsoft/powershell/$POWERSHELL_VERSION/pwsh /usr/bin/pwsh
-#****************     END .NET-CORE     *******************************************************
-
-
-#****************      NODEJS     ****************************************************
-
-#nodejs
-ARG SRC_DIR="/usr/src"
-ARG N_SRC_DIR="$SRC_DIR/n"
-RUN git clone https://github.com/tj/n $N_SRC_DIR \
-     && cd $N_SRC_DIR && make install
-
-ENV NODE_18_VERSION="18.20.3"
-ENV NODE_20_VERSION="20.14.0"
-ENV NODE_22_VERSION="22.2.0"
-
-RUN  n $NODE_18_VERSION && npm install --save-dev -g -f grunt \
-     && npm install --save-dev -g -f grunt-cli \
-     && npm install --save-dev -g -f webpack \
-     && npm install --save-dev -g -f yarn \
-     && n $NODE_20_VERSION && npm install --save-dev -g -f grunt \
-     && npm install --save-dev -g -f grunt-cli \
-     && npm install --save-dev -g -f webpack \
-     && npm install --save-dev -g -f yarn \
-     && n $NODE_22_VERSION && npm install --save-dev -g -f grunt \
-     && npm install --save-dev -g -f grunt-cli \
-     && npm install --save-dev -g -f webpack \
-     && npm install --save-dev -g -f yarn \
-     && cd / && rm -rf $N_SRC_DIR && rm -rf /tmp/*
-
-#****************      END NODEJS     ****************************************************
-
-#**************** RUBY *********************************************************
-
-#rubyenv
-ENV RBENV_SRC_DIR="/usr/local/rbenv"
-
-ENV PATH="/root/.rbenv/shims:$RBENV_SRC_DIR/bin:$RBENV_SRC_DIR/shims:$PATH" \
-    RUBY_BUILD_SRC_DIR="$RBENV_SRC_DIR/plugins/ruby-build"
-
-RUN set -ex \
-    && git clone https://github.com/rbenv/rbenv.git $RBENV_SRC_DIR \
-    && mkdir -p $RBENV_SRC_DIR/plugins \
-    && git clone https://github.com/rbenv/ruby-build.git $RUBY_BUILD_SRC_DIR \
-    && sh $RUBY_BUILD_SRC_DIR/install.sh
-
-ENV RUBY_33_VERSION="3.3.2"
-ENV RUBY_32_VERSION="3.2.4"
-ENV RUBY_31_VERSION="3.1.6"
-
-RUN rbenv install $RUBY_33_VERSION \
-    && rbenv install $RUBY_32_VERSION \
-    && rbenv install $RUBY_31_VERSION \
-    && rbenv global $RUBY_32_VERSION && ruby -v \
-    && rm -rf /tmp/*
-
-#**************** END RUBY *****************************************************
 
 #**************** PYTHON *****************************************************
 
@@ -308,36 +204,6 @@ RUN set -ex \
     && pip3 install --no-build-isolation "Cython<3" "PyYAML==$PYYAML_VERSION" \
     && pip3 uninstall cython --yes
 
-# Python311
-RUN set -ex \
-    && pyenv install $PYTHON_311_VERSION \
-    && pyenv global $PYTHON_311_VERSION \
-    && pip3 install --no-cache-dir --upgrade --force-reinstall "pip==$PYTHON_PIP_VERSION" \
-    && pip3 install wheel \
-    && pip3 install --no-cache-dir --upgrade 'setuptools==67.7.2' boto3 pipenv virtualenv \
-    && pip3 install --no-build-isolation "Cython<3" "PyYAML==$PYYAML_VERSION" \
-    && pip3 uninstall cython --yes
-
-# Python310
-RUN set -ex \
-    && pyenv install $PYTHON_310_VERSION \
-    && pyenv global $PYTHON_310_VERSION \
-    && pip3 install --no-cache-dir --upgrade --force-reinstall "pip==$PYTHON_PIP_VERSION" \
-    && pip3 install wheel \
-    && pip3 install --no-cache-dir --upgrade 'setuptools==67.7.2' boto3 pipenv virtualenv \
-    && pip3 install --no-build-isolation "Cython<3" "PyYAML==$PYYAML_VERSION" \
-    && pip3 uninstall cython --yes
-
-# Python39
-RUN set -ex \
-    && pyenv install $PYTHON_39_VERSION \
-    && pyenv global $PYTHON_39_VERSION \
-    && pip3 install --no-cache-dir --upgrade --force-reinstall "pip==$PYTHON_PIP_VERSION" \
-    && pip3 install wheel \
-    && pip3 install --no-cache-dir --upgrade 'setuptools==67.7.2' boto3 pipenv virtualenv \
-    && pip3 install --no-build-isolation "Cython<3" "PyYAML==$PYYAML_VERSION" \
-    && pip3 uninstall cython --yes \
-    && rm -rf /tmp/*
 
 #**************** END PYTHON *****************************************************
 
@@ -491,12 +357,7 @@ RUN rm -fr /var/lib/apt/lists/* /tmp/* /var/tmp/* && apt-get clean && apt-get up
 FROM runtimes AS std_v7
 
 # Activate runtime versions specific to image version.
-RUN n $NODE_18_VERSION
-RUN pyenv global $PYTHON_311_VERSION
-RUN phpenv global $PHP_82_VERSION
-RUN rbenv global $RUBY_32_VERSION
-RUN goenv global $GOLANG_20_VERSION
-RUN dotnet new globaljson --force --sdk-version $DOTNET_6_GLOBAL_JSON_SDK_VERSION --roll-forward feature
+RUN pyenv global $PYTHON_312_VERSION
 
 # Configure SSH
 COPY ssh_config /root/.ssh/config
